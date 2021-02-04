@@ -83,7 +83,9 @@ server.on('message', (msg, rinfo) => {
 			if (error) {
 				answerData.flags = SERVFAIL_RCODE;
 			} else if (data) {
-				cache[query.name] = {};
+				if (!cache[query.name]) {
+					cache[query.name] = {};
+				}
 				cache[query.name][query.type] = data;
 				for (var i = 0; i < data.length; i++) {
 					answerData.answers.push({
@@ -168,7 +170,9 @@ server.on('message', (msg, rinfo) => {
 					waitForDNSH = true;
 					dnsH.resolve(query.name, query.type).then(function(data) {
 						if (data[0].type === 5) { // CNAME
-							cache[query.name] = {};
+							if (!cache[query.name]) {
+								cache[query.name] = {};
+							}
 							cache[query.name][query.type] = [`CNAME:${data[0].data}`];
 							answerData.answers.push({
 								type: 'CNAME',
@@ -177,7 +181,9 @@ server.on('message', (msg, rinfo) => {
 								data: data[0].data
 							});
 						} else {
-							cache[query.name] = {};
+							if (!cache[query.name]) {
+								cache[query.name] = {};
+							}
 							cache[query.name][query.type] = [];
 						}
 
@@ -186,9 +192,11 @@ server.on('message', (msg, rinfo) => {
 						console.error(err);
 					});
 				} else {
-					for (var i = 0; i < answerVersionData.length; i++) {
+					if (!cache[query.name]) {
 						cache[query.name] = {};
-						cache[query.name][query.type] = answerVersionData;
+					}
+					cache[query.name][query.type] = answerVersionData;
+					for (var i = 0; i < answerVersionData.length; i++) {
 						answerData.answers.push({
 							type: answerType,
 							class: query.class,
@@ -196,6 +204,8 @@ server.on('message', (msg, rinfo) => {
 							data: answerVersionData[i]
 						});
 					}
+
+					cache[query.name][query.type === 'A' ? 'AAAA' : 'A'] = [];
 
 					//console.log(answerData);
 				}
