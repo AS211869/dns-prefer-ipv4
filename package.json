@@ -1,0 +1,14 @@
+{
+  "name": "dns-prefer-ipv4",
+  "version": "0.0.1",
+  "description": "A DNS server that prefers IPv4 responses over IPv6 ones",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "TrueWinter",
+  "license": "MIT",
+  "dependencies": {
+    "dns-packet": "^5.2.1"
+  }
+}
