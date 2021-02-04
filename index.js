@@ -200,7 +200,6 @@ server.on('message', (msg, rinfo) => {
 					//console.log(answerData);
 				}
 
-				console.log(answerData);
 				if (waitForDNSH) {
 					event.addListener('dnsHComplete', function() {
 						server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
@@ -209,7 +208,7 @@ server.on('message', (msg, rinfo) => {
 							}
 
 							//console.log(bytes);
-							console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
+							console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address} after DoH lookup`);
 						});
 					});
 				} else {
