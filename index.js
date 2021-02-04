@@ -2,6 +2,9 @@ const dgram = require('dgram');
 const server = dgram.createSocket('udp4');
 const dnsPacket = require('dns-packet');
 const dns = require('dns');
+const DoH = require('doh-js-client').DoH;
+const { EventEmitter } = require('events');
+var dnsH = new DoH('google');
 
 // https://support.umbrella.com/hc/en-us/articles/232254248-Common-DNS-return-codes-for-any-DNS-service-and-Umbrella-
 let NOERROR_RCODE = 0x00;
@@ -9,6 +12,8 @@ let SERVFAIL_RCODE = 0x02;
 let NXDOMAIN_RCODE = 0x03;
 
 var cache = {};
+
+var event = new EventEmitter();
 
 server.on('error', (err) => {
 	console.log(`server error:\n${err.stack}`);
@@ -32,12 +37,21 @@ server.on('message', (msg, rinfo) => {
 		};
 
 		for (var i = 0; i < cache[query.name][query.type].length; i++) {
-			answerData.answers.push({
-				type: query.type,
-				class: query.class,
-				name: query.name,
-				data: cache[query.name][query.type][i]
-			});
+			if (cache[query.name][query.type][i].includes('CNAME:')) {
+				answerData.answers.push({
+					type: 'CNAME',
+					class: query.class,
+					name: query.name,
+					data: cache[query.name][query.type][i].split('CNAME:')[1]
+				});
+			} else {
+				answerData.answers.push({
+					type: query.type,
+					class: query.class,
+					name: query.name,
+					data: cache[query.name][query.type][i]
+				});
+			}
 		}
 
 		server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
@@ -144,12 +158,30 @@ server.on('message', (msg, rinfo) => {
 				var answerVersionData = v4Answer ? data4 : data6;
 				var answerType = v4Answer ? 'A' : 'AAAA';
 
+				var waitForDNSH = false;
+
 				if ((answerType === 'A' && v4Error) || (answerType === 'AAAA' && v6Error)) {
 					var _error = err4 || err6;
 					//console.log(_error.code);
 					answerData.flags = _error.code === 'ENOTFOUND' ? NXDOMAIN_RCODE : NOERROR_RCODE;
 				} else if ((answerType === 'AAAA' && query.type === 'A') || (answerType === 'A' && query.type === 'AAAA')) {
-					// do not add answers
+					waitForDNSH = true;
+					dnsH.resolve(query.name, query.type).then(function(data) {
+						if (data[0].type === 5) { // CNAME
+							cache[query.name] = {};
+							cache[query.name][query.type] = [`CNAME:${data[0].data}`];
+							answerData.answers.push({
+								type: 'CNAME',
+								class: query.class,
+								name: query.name,
+								data: data[0].data
+							});
+						}
+
+						event.emit('dnsHComplete');
+					}).catch(function(err) {
+						console.error(err);
+					});
 				} else {
 					for (var i = 0; i < answerVersionData.length; i++) {
 						cache[query.name] = {};
@@ -165,14 +197,28 @@ server.on('message', (msg, rinfo) => {
 					//console.log(answerData);
 				}
 
-				server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
-					if (err) {
-						return console.error(err);
-					}
+				console.log(answerData);
+				if (waitForDNSH) {
+					event.addListener('dnsHComplete', function() {
+						server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
+							if (err) {
+								return console.error(err);
+							}
 
-					//console.log(bytes);
-					console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
-				});
+							//console.log(bytes);
+							console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
+						});
+					});
+				} else {
+					server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
+						if (err) {
+							return console.error(err);
+						}
+
+						//console.log(bytes);
+						console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
+					});
+				}
 			});
 		});
 	}
