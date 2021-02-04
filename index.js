@@ -4,9 +4,11 @@ const dnsPacket = require('dns-packet');
 const dns = require('dns');
 
 // https://support.umbrella.com/hc/en-us/articles/232254248-Common-DNS-return-codes-for-any-DNS-service-and-Umbrella-
-let NOERRROR_RCODE = 0x00;
+let NOERROR_RCODE = 0x00;
 let SERVFAIL_RCODE = 0x02;
 let NXDOMAIN_RCODE = 0x03;
+
+var cache = {};
 
 server.on('error', (err) => {
 	console.log(`server error:\n${err.stack}`);
@@ -14,15 +16,39 @@ server.on('error', (err) => {
 });
 
 server.on('message', (msg, rinfo) => {
-	console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
+	//console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
 	var packet = dnsPacket.decode(msg);
-	console.log(packet);
+	//console.log(packet);
 
 	let query = packet.questions[0];
 
-	console.log(query.type);
+	//console.log(query.type);
 
-	if (!['A', 'AAAA'].includes(query.type)) {
+	if (cache[query.name] && cache[query.name][query.type]) {
+		var answerData = {
+			type: 'response',
+			id: packet.id,
+			answers: []
+		};
+
+		for (var i = 0; i < cache[query.name][query.type].length; i++) {
+			answerData.answers.push({
+				type: query.type,
+				class: query.class,
+				name: query.name,
+				data: cache[query.name][query.type][i]
+			});
+		}
+
+		server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
+			if (err) {
+				return console.error(err);
+			}
+
+			//console.log(bytes);
+			console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+		});
+	} else if (!['A', 'AAAA'].includes(query.type)) {
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
 			if (err) {
@@ -38,11 +64,13 @@ server.on('message', (msg, rinfo) => {
 				answers: []
 			};
 
-			console.log(`qid: ${packet.id}`);
+			//console.log(`qid: ${packet.id}`);
 
 			if (error) {
 				answerData.flags = SERVFAIL_RCODE;
 			} else if (data) {
+				cache[query.name] = {};
+				cache[query.name][query.type] = data;
 				for (var i = 0; i < data.length; i++) {
 					answerData.answers.push({
 						type: query.type,
@@ -52,7 +80,7 @@ server.on('message', (msg, rinfo) => {
 					});
 				}
 
-				console.log(answerData);
+				//console.log(answerData);
 			}
 
 			server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
@@ -60,7 +88,8 @@ server.on('message', (msg, rinfo) => {
 					return console.error(err);
 				}
 
-				console.log(bytes);
+				//console.log(bytes);
+				console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
 			});
 		});
 	} else {
@@ -76,7 +105,7 @@ server.on('message', (msg, rinfo) => {
 				}
 			}
 
-			console.log(data4);
+			//console.log(data4);
 
 			dns.resolve6(query.name, 'AAAA', function(err6, data6) {
 				var v6Answer = false;
@@ -90,7 +119,7 @@ server.on('message', (msg, rinfo) => {
 					}
 				}
 
-				console.log(data6);
+				//console.log(data6);
 
 				if (!v4Error && data4.length !== 0) {
 					v4Answer = true;
@@ -100,9 +129,9 @@ server.on('message', (msg, rinfo) => {
 					v6Answer = true;
 				}
 
-				console.log(`4: ${v4Answer}`);
-				console.log(`6: ${v6Answer}`);
-				console.log(`b: ${v4Answer && v6Answer}`);
+				//console.log(`4: ${v4Answer}`);
+				//console.log(`6: ${v6Answer}`);
+				//console.log(`b: ${v4Answer && v6Answer}`);
 
 				var answerData = {
 					type: 'response',
@@ -110,19 +139,21 @@ server.on('message', (msg, rinfo) => {
 					answers: []
 				};
 
-				console.log(`qid: ${packet.id}`);
+				//console.log(`qid: ${packet.id}`);
 
 				var answerVersionData = v4Answer ? data4 : data6;
 				var answerType = v4Answer ? 'A' : 'AAAA';
 
 				if ((answerType === 'A' && v4Error) || (answerType === 'AAAA' && v6Error)) {
 					var _error = err4 || err6;
-					console.log(_error.code);
+					//console.log(_error.code);
 					answerData.flags = _error.code === 'ENOTFOUND' ? NXDOMAIN_RCODE : NOERROR_RCODE;
 				} else if ((answerType === 'AAAA' && query.type === 'A') || (answerType === 'A' && query.type === 'AAAA')) {
 					// do not add answers
 				} else {
 					for (var i = 0; i < answerVersionData.length; i++) {
+						cache[query.name] = {};
+						cache[query.name][query.type] = answerVersionData;
 						answerData.answers.push({
 							type: answerType,
 							class: query.class,
@@ -131,7 +162,7 @@ server.on('message', (msg, rinfo) => {
 						});
 					}
 
-					console.log(answerData);
+					//console.log(answerData);
 				}
 
 				server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
@@ -139,7 +170,8 @@ server.on('message', (msg, rinfo) => {
 						return console.error(err);
 					}
 
-					console.log(bytes);
+					//console.log(bytes);
+					console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
 				});
 			});
 		});
