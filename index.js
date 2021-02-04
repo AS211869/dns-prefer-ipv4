@@ -176,6 +176,9 @@ server.on('message', (msg, rinfo) => {
 								name: query.name,
 								data: data[0].data
 							});
+						} else {
+							cache[query.name] = {};
+							cache[query.name][query.type] = [];
 						}
 
 						event.emit('dnsHComplete');
