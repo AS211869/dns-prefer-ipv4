@@ -250,7 +250,7 @@ event.on('query', function(type, msg, rinfo) {
 				} else if ((answerType === 'AAAA' && query.type === 'A') || (answerType === 'A' && query.type === 'AAAA')) {
 					waitForDNSH = true;
 					dnsH.resolve(query.name, query.type).then(function(data) {
-						if (data[0].type === 5) { // CNAME
+						if (data[0] && data[0].type === 5) { // CNAME
 							if (!cache[query.name]) {
 								cache[query.name] = {};
 							}
