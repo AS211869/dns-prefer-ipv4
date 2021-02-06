@@ -242,9 +242,6 @@ event.on('query', function(type, msg, rinfo) {
 					answers: []
 				};
 
-				console.log(dnsPacket.RECURSION_DESIRED);
-				console.log(dnsPacket.RECURSION_AVAILABLE);
-
 				//console.log(`qid: ${packet.id}`);
 
 				var answerVersionData = v4Answer ? data4 : data6;
