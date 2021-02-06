@@ -201,7 +201,28 @@ event.on('query', function(type, msg, rinfo) {
 			if (err4) {
 				v4Error = true;
 				if (err4.code !== 'ENODATA' && err4.code !== 'ENOTFOUND') {
+					console.log(`Error doing DNS lookup: ${err4}`);
 					v4FailError = true;
+					var answerDataError = {
+						type: 'response',
+						id: packet ? packet.id : null,
+						flags: SERVFAIL_RCODE,
+						answers: []
+					};
+
+					if (type === 'udp') {
+						server.send(dnsPacket.encode(answerDataError), rinfo.port, rinfo.address, function(err, bytes) {
+							if (err) {
+								return console.error(err);
+							}
+
+							//console.log(bytes);
+						});
+					} else {
+						rinfo.socket.write(dnsPacket.streamEncode(answerDataError), function() {
+							rinfo.socket.end();
+						});
+					}
 					return console.error(err4);
 				}
 			}
@@ -215,7 +236,28 @@ event.on('query', function(type, msg, rinfo) {
 				if (err6) {
 					v6Error = true;
 					if (err6.code !== 'ENODATA' && err6.code !== 'ENOTFOUND') {
+						console.log(`Error doing DNS lookup: ${err6}`);
 						v6FailError = true;
+						var answerDataError = {
+							type: 'response',
+							id: packet ? packet.id : null,
+							flags: SERVFAIL_RCODE,
+							answers: []
+						};
+
+						if (type === 'udp') {
+							server.send(dnsPacket.encode(answerDataError), rinfo.port, rinfo.address, function(err, bytes) {
+								if (err) {
+									return console.error(err);
+								}
+
+								//console.log(bytes);
+							});
+						} else {
+							rinfo.socket.write(dnsPacket.streamEncode(answerDataError), function() {
+								rinfo.socket.end();
+							});
+						}
 						return console.error(err6);
 					}
 				}
@@ -276,7 +318,27 @@ event.on('query', function(type, msg, rinfo) {
 
 						event.emit('dnsHComplete');
 					}).catch(function(err) {
-						console.error(err);
+						console.log(`Error doing DNS lookup: ${err}`);
+						var answerDataError = {
+							type: 'response',
+							id: packet ? packet.id : null,
+							flags: SERVFAIL_RCODE,
+							answers: []
+						};
+
+						if (type === 'udp') {
+							server.send(dnsPacket.encode(answerDataError), rinfo.port, rinfo.address, function(err, bytes) {
+								if (err) {
+									return console.error(err);
+								}
+
+								//console.log(bytes);
+							});
+						} else {
+							rinfo.socket.write(dnsPacket.streamEncode(answerDataError), function() {
+								rinfo.socket.end();
+							});
+						}
 					});
 				} else {
 					if (!cache[query.name]) {
