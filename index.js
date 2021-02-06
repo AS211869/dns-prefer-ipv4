@@ -1,5 +1,6 @@
 const dgram = require('dgram');
 const server = dgram.createSocket('udp4');
+const serverTCP = require('net').createServer();
 const dnsPacket = require('dns-packet');
 const dns = require('dns');
 const DoH = require('doh-js-client').DoH;
@@ -20,9 +21,38 @@ server.on('error', (err) => {
 	server.close();
 });
 
+serverTCP.on('error', (err) => {
+	console.log(`server error:\n${err.stack}`);
+	server.close();
+});
+
+serverTCP.on('connection', (socket) => {
+	console.log(`TCP connection from ${socket.remoteAddress}:${socket.remotePort}`);
+	socket.on('data', function(data) {
+		//console.log(data.toString());
+		event.emit('query', 'tcp', data, {
+			address: socket.remoteAddress,
+			port: socket.remotePort,
+			socket
+		});
+		console.log(data.toString());
+	});
+});
+
 server.on('message', (msg, rinfo) => {
+	console.log(`UDP connection from ${rinfo.address}:${rinfo.port}`);
+	console.log(msg.toString());
+	event.emit('query', 'udp', msg, rinfo);
+});
+
+event.on('query', function(type, msg, rinfo) {
 	//console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
-	var packet = dnsPacket.decode(msg);
+	var packet;
+	if (type === 'udp') {
+		packet = dnsPacket.decode(msg);
+	} else {
+		packet = dnsPacket.streamDecode(msg);
+	}
 	//console.log(packet);
 
 	let query = packet.questions[0];
@@ -54,14 +84,20 @@ server.on('message', (msg, rinfo) => {
 			}
 		}
 
-		server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
-			if (err) {
-				return console.error(err);
-			}
+		if (type === 'udp') {
+			server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
+				if (err) {
+					return console.error(err);
+				}
 
-			//console.log(bytes);
-			console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
-		});
+				//console.log(bytes);
+				console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+			});
+		} else {
+			rinfo.socket.end(dnsPacket.streamEncode(answerData), function() {
+				console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+			});
+		}
 	} else if (!['A', 'AAAA'].includes(query.type)) {
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
@@ -99,14 +135,21 @@ server.on('message', (msg, rinfo) => {
 				//console.log(answerData);
 			}
 
-			server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
-				if (err) {
-					return console.error(err);
-				}
+			if (type === 'udp') {
+				server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
+					if (err) {
+						return console.error(err);
+					}
 
-				//console.log(bytes);
-				console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
-			});
+					//console.log(bytes);
+					console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+				});
+			} else {
+				rinfo.socket.write(dnsPacket.streamEncode(answerData), function() {
+					console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+					rinfo.socket.end();
+				});
+			}
 		});
 	} else {
 		dns.resolve4(query.name, 'A', function(err4, data4) {
@@ -212,24 +255,39 @@ server.on('message', (msg, rinfo) => {
 
 				if (waitForDNSH) {
 					event.addListener('dnsHComplete', function() {
+						if (type === 'udp') {
+							server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
+								if (err) {
+									return console.error(err);
+								}
+
+								//console.log(bytes);
+								console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+							});
+						} else {
+							rinfo.socket.write(dnsPacket.streamEncode(answerData), function() {
+								console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+								rinfo.socket.end();
+							});
+						}
+					});
+				} else {
+					// eslint-disable-next-line no-lonely-if
+					if (type === 'udp') {
 						server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
 							if (err) {
 								return console.error(err);
 							}
 
 							//console.log(bytes);
-							console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address} after DoH lookup`);
+							console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
 						});
-					});
-				} else {
-					server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
-						if (err) {
-							return console.error(err);
-						}
-
-						//console.log(bytes);
-						console.log(`Answered request: ${query.type} ${query.name} for ${rinfo.address}`);
-					});
+					} else {
+						rinfo.socket.write(dnsPacket.streamEncode(answerData), function() {
+							console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+							rinfo.socket.end();
+						});
+					}
 				}
 			});
 		});
@@ -238,7 +296,14 @@ server.on('message', (msg, rinfo) => {
 
 server.on('listening', () => {
 	const address = server.address();
-	console.log(`server listening ${address.address}:${address.port}`);
+	console.log(`UDP server listening ${address.address}:${address.port}`);
 });
 
 server.bind(41234);
+
+serverTCP.on('listening', () => {
+	const address = server.address();
+	console.log(`TCP server listening ${address.address}:${address.port}`);
+});
+
+serverTCP.listen(41234);
