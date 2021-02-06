@@ -36,13 +36,11 @@ serverTCP.on('connection', (socket) => {
 			port: socket.remotePort,
 			socket
 		});
-		console.log(data.toString());
 	});
 });
 
 server.on('message', (msg, rinfo) => {
 	console.log(`UDP connection from ${rinfo.address}:${rinfo.port}`);
-	console.log(msg.toString());
 	event.emit('query', 'udp', msg, rinfo);
 });
 
