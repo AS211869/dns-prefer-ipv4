@@ -101,6 +101,7 @@ event.on('query', function(type, msg, rinfo) {
 		var answerData = {
 			type: 'response',
 			id: packet.id,
+			questions: query,
 			answers: []
 		};
 
@@ -149,6 +150,7 @@ event.on('query', function(type, msg, rinfo) {
 			var answerData = {
 				type: 'response',
 				id: packet.id,
+				questions: query,
 				answers: []
 			};
 
@@ -180,11 +182,11 @@ event.on('query', function(type, msg, rinfo) {
 					}
 
 					//console.log(bytes);
-					console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+					console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address}`);
 				});
 			} else {
 				rinfo.socket.write(dnsPacket.streamEncode(answerData), function() {
-					console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+					console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address}`);
 					rinfo.socket.end();
 				});
 			}
@@ -233,6 +235,7 @@ event.on('query', function(type, msg, rinfo) {
 				var answerData = {
 					type: 'response',
 					id: packet.id,
+					questions: query,
 					answers: []
 				};
 
@@ -300,11 +303,11 @@ event.on('query', function(type, msg, rinfo) {
 								}
 
 								//console.log(bytes);
-								console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+								console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address}`);
 							});
 						} else {
 							rinfo.socket.write(dnsPacket.streamEncode(answerData), function() {
-								console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+								console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address}`);
 								rinfo.socket.end();
 							});
 						}
@@ -318,11 +321,11 @@ event.on('query', function(type, msg, rinfo) {
 							}
 
 							//console.log(bytes);
-							console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+							console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address}`);
 						});
 					} else {
 						rinfo.socket.write(dnsPacket.streamEncode(answerData), function() {
-							console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
+							console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address}`);
 							rinfo.socket.end();
 						});
 					}
