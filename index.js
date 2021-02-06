@@ -101,7 +101,7 @@ event.on('query', function(type, msg, rinfo) {
 		var answerData = {
 			type: 'response',
 			id: packet.id,
-			questions: query,
+			questions: [query],
 			answers: []
 		};
 
@@ -137,6 +137,7 @@ event.on('query', function(type, msg, rinfo) {
 				console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
 			});
 		}
+		console.log(answerData);
 	} else if (!['A', 'AAAA'].includes(query.type)) {
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
@@ -150,7 +151,7 @@ event.on('query', function(type, msg, rinfo) {
 			var answerData = {
 				type: 'response',
 				id: packet.id,
-				questions: query,
+				questions: [query],
 				answers: []
 			};
 
@@ -235,7 +236,7 @@ event.on('query', function(type, msg, rinfo) {
 				var answerData = {
 					type: 'response',
 					id: packet.id,
-					questions: query,
+					questions: [query],
 					answers: []
 				};
 
