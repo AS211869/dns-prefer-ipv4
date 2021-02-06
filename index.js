@@ -11,6 +11,7 @@ var dnsH = new DoH('google');
 let NOERROR_RCODE = 0x00;
 let SERVFAIL_RCODE = 0x02;
 let NXDOMAIN_RCODE = 0x03;
+let NOTIMP_RCODE = 0x04;
 
 var cache = {};
 
@@ -55,7 +56,46 @@ event.on('query', function(type, msg, rinfo) {
 	}
 	//console.log(packet);
 
-	let query = packet.questions[0];
+	let query;
+
+	var _throwError = SERVFAIL_RCODE;
+
+	try {
+		query = packet.questions[0];
+
+		var supportedTypes = ['A', 'AAAA', 'CNAME', 'MX', 'NAPTR', 'NS', 'PTR', 'SOA', 'SRV', 'TXT'];
+
+		if (!supportedTypes.includes(query.type)) {
+			_throwError = NOTIMP_RCODE;
+			throw new Error();
+		}
+	} catch (e) {
+		_stop = true;
+		var answerDataError = {
+			type: 'response',
+			id: packet ? packet.id : null,
+			flags: _throwError,
+			answers: []
+		};
+
+		if (type === 'udp') {
+			server.send(dnsPacket.encode(answerDataError), rinfo.port, rinfo.address, function(err, bytes) {
+				if (err) {
+					return console.error(err);
+				}
+
+				//console.log(bytes);
+				console.log(`Received invalid UDP request from ${rinfo.address}. ${_throwError === NOTIMP_RCODE ? 'Type not implemented' : 'General error'}`);
+			});
+		} else {
+			rinfo.socket.write(dnsPacket.streamEncode(answerDataError), function() {
+				console.log(`Received invalid TCP request from ${rinfo.address}. ${_throwError === NOTIMP_RCODE ? 'Type not implemented' : 'General error'}`);
+				rinfo.socket.end();
+			});
+		}
+
+		return;
+	}
 
 	//console.log(query.type);
 
