@@ -46,7 +46,7 @@ server.on('message', (msg, rinfo) => {
 
 event.on('query', function(type, msg, rinfo) {
 	//console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
-	var packet;
+	let packet;
 	if (type === 'udp') {
 		packet = dnsPacket.decode(msg);
 	} else {
@@ -68,7 +68,6 @@ event.on('query', function(type, msg, rinfo) {
 			throw new Error();
 		}
 	} catch (e) {
-		_stop = true;
 		var answerDataError = {
 			type: 'response',
 			id: packet ? packet.id : null,
@@ -101,12 +100,13 @@ event.on('query', function(type, msg, rinfo) {
 		var answerData = {
 			type: 'response',
 			id: packet.id,
+			flags: dnsPacket.RECURSION_DESIRED | dnsPacket.RECURSION_AVAILABLE,
 			questions: [query],
 			answers: []
 		};
 
 		for (var i = 0; i < cache[query.name][query.type].length; i++) {
-			if (cache[query.name][query.type][i].includes('CNAME:')) {
+			if (typeof cache[query.name][query.type][i] === 'string' && cache[query.name][query.type][i].includes('CNAME:')) {
 				answerData.answers.push({
 					type: 'CNAME',
 					class: query.class,
@@ -137,7 +137,7 @@ event.on('query', function(type, msg, rinfo) {
 				console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
 			});
 		}
-		console.log(answerData);
+		//console.log(answerData);
 	} else if (!['A', 'AAAA'].includes(query.type)) {
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
@@ -151,6 +151,7 @@ event.on('query', function(type, msg, rinfo) {
 			var answerData = {
 				type: 'response',
 				id: packet.id,
+				flags: dnsPacket.RECURSION_DESIRED | dnsPacket.RECURSION_AVAILABLE,
 				questions: [query],
 				answers: []
 			};
@@ -237,8 +238,12 @@ event.on('query', function(type, msg, rinfo) {
 					type: 'response',
 					id: packet.id,
 					questions: [query],
+					flags: dnsPacket.RECURSION_DESIRED | dnsPacket.RECURSION_AVAILABLE,
 					answers: []
 				};
+
+				console.log(dnsPacket.RECURSION_DESIRED);
+				console.log(dnsPacket.RECURSION_AVAILABLE);
 
 				//console.log(`qid: ${packet.id}`);
 
@@ -294,6 +299,8 @@ event.on('query', function(type, msg, rinfo) {
 
 					//console.log(answerData);
 				}
+
+				//console.log(answerData);
 
 				if (waitForDNSH) {
 					event.addListener('dnsHComplete', function() {
