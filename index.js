@@ -1,5 +1,5 @@
 const dgram = require('dgram');
-const server = dgram.createSocket('udp4');
+const server = dgram.createSocket('udp6');
 const serverTCP = require('net').createServer();
 const dnsPacket = require('dns-packet');
 const dns = require('dns');
@@ -407,11 +407,11 @@ server.on('listening', () => {
 	console.log(`UDP server listening ${address.address}:${address.port}`);
 });
 
-server.bind(41234);
+server.bind(41234, '::');
 
 serverTCP.on('listening', () => {
 	const address = server.address();
 	console.log(`TCP server listening ${address.address}:${address.port}`);
 });
 
-serverTCP.listen(41234);
+serverTCP.listen(41234, '::');
