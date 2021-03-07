@@ -61,7 +61,7 @@ event.on('query', function(type, msg, rinfo) {
 	try {
 		query = packet.questions[0];
 
-		var supportedTypes = ['A', 'AAAA', 'CNAME', 'MX', 'NAPTR', 'NS', 'PTR', 'SOA', 'SRV', 'TXT'];
+		var supportedTypes = ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SRV', 'TXT'];
 
 		if (!supportedTypes.includes(query.type)) {
 			_throwError = NOTIMP_RCODE;
@@ -139,8 +139,12 @@ event.on('query', function(type, msg, rinfo) {
 		}
 		//console.log(answerData);
 	} else if (!['A', 'AAAA'].includes(query.type)) {
+
+		dns.setServers(['8.8.8.8']);
+
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
+			console.log('test');
 			if (err) {
 				if (err.code !== 'ENODATA' && err.code !== 'ENOTFOUND') {
 					error = true;
@@ -166,15 +170,27 @@ event.on('query', function(type, msg, rinfo) {
 				}
 				cache[query.name][query.type] = data;
 				for (var i = 0; i < data.length; i++) {
-					answerData.answers.push({
-						type: query.type,
-						class: query.class,
-						name: query.name,
-						data: data[i]
-					});
+					if (query.type === 'SRV') {
+						var _thisData = Object.assign({}, data[i]);
+						_thisData.target = _thisData.name;
+						delete _thisData.name;
+						answerData.answers.push({
+							type: query.type,
+							class: query.class,
+							name: query.name,
+							data: _thisData
+						});
+					} else {
+						answerData.answers.push({
+							type: query.type,
+							class: query.class,
+							name: query.name,
+							data: data[i]
+						});
+					}
 				}
 
-				//console.log(answerData);
+				console.log(answerData.data);
 			}
 
 			if (type === 'udp') {
