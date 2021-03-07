@@ -111,6 +111,7 @@ event.on('query', function(type, msg, rinfo) {
 					type: 'CNAME',
 					class: query.class,
 					name: query.name,
+					ttl: 60,
 					data: cache[query.name][query.type][i].split('CNAME:')[1]
 				});
 			} else {
@@ -119,6 +120,7 @@ event.on('query', function(type, msg, rinfo) {
 					type: query.type,
 					class: query.class,
 					name: query.name,
+					ttl: 60,
 					data: cache[query.name][query.type][i]
 				});
 			}
@@ -176,6 +178,7 @@ event.on('query', function(type, msg, rinfo) {
 							type: query.type,
 							class: query.class,
 							name: query.name,
+							ttl: 60,
 							data: _thisData
 						});
 					} else {
@@ -184,6 +187,7 @@ event.on('query', function(type, msg, rinfo) {
 							type: query.type,
 							class: query.class,
 							name: query.name,
+							ttl: 60,
 							data: data[i]
 						});
 					}
@@ -323,6 +327,7 @@ event.on('query', function(type, msg, rinfo) {
 								type: 'CNAME',
 								class: query.class,
 								name: query.name,
+								ttl: 60,
 								data: data[0].data
 							});
 						} else {
@@ -366,6 +371,7 @@ event.on('query', function(type, msg, rinfo) {
 							type: answerType,
 							class: query.class,
 							name: query.name,
+							ttl: 60,
 							data: answerVersionData[i]
 						});
 					}
