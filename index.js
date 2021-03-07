@@ -114,6 +114,7 @@ event.on('query', function(type, msg, rinfo) {
 					data: cache[query.name][query.type][i].split('CNAME:')[1]
 				});
 			} else {
+				//console.log(cache[query.name][query.type][i]);
 				answerData.answers.push({
 					type: query.type,
 					class: query.class,
@@ -139,12 +140,9 @@ event.on('query', function(type, msg, rinfo) {
 		}
 		//console.log(answerData);
 	} else if (!['A', 'AAAA'].includes(query.type)) {
-
-		dns.setServers(['8.8.8.8']);
-
+		//dns.setServers(['8.8.8.8']);
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
-			console.log('test');
 			if (err) {
 				if (err.code !== 'ENODATA' && err.code !== 'ENOTFOUND') {
 					error = true;
@@ -168,12 +166,12 @@ event.on('query', function(type, msg, rinfo) {
 				if (!cache[query.name]) {
 					cache[query.name] = {};
 				}
-				cache[query.name][query.type] = data;
 				for (var i = 0; i < data.length; i++) {
 					if (query.type === 'SRV') {
 						var _thisData = Object.assign({}, data[i]);
 						_thisData.target = _thisData.name;
 						delete _thisData.name;
+						cache[query.name][query.type] = [_thisData];
 						answerData.answers.push({
 							type: query.type,
 							class: query.class,
@@ -181,6 +179,7 @@ event.on('query', function(type, msg, rinfo) {
 							data: _thisData
 						});
 					} else {
+						cache[query.name][query.type] = data;
 						answerData.answers.push({
 							type: query.type,
 							class: query.class,
@@ -190,7 +189,8 @@ event.on('query', function(type, msg, rinfo) {
 					}
 				}
 
-				console.log(answerData.data);
+				console.log(answerData.answers[0].data);
+				console.log(cache[query.name][query.type]);
 			}
 
 			if (type === 'udp') {
