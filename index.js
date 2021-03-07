@@ -378,8 +378,9 @@ event.on('query', function(type, msg, rinfo) {
 				//console.log(answerData);
 
 				if (waitForDNSH) {
-					var _event = event.addListener('dnsHComplete', function() {
-						_event.off();
+					// eslint-disable-next-line no-inner-declarations
+					function doDoHEvent() {
+						event.removeListener('dnsDoHComplete', doDoHEvent);
 						if (type === 'udp') {
 							server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
 								if (err) {
@@ -395,7 +396,8 @@ event.on('query', function(type, msg, rinfo) {
 								rinfo.socket.end();
 							});
 						}
-					});
+					}
+					event.addListener('dnsHComplete', doDoHEvent);
 				} else {
 					// eslint-disable-next-line no-lonely-if
 					if (type === 'udp') {
