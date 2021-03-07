@@ -189,8 +189,8 @@ event.on('query', function(type, msg, rinfo) {
 					}
 				}
 
-				console.log(answerData.answers[0].data);
-				console.log(cache[query.name][query.type]);
+				//console.log(answerData.answers[0].data);
+				//console.log(cache[query.name][query.type]);
 			}
 
 			if (type === 'udp') {
