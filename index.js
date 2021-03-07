@@ -379,9 +379,9 @@ event.on('query', function(type, msg, rinfo) {
 
 				if (waitForDNSH) {
 					var _event = event.addListener('dnsHComplete', function() {
+						_event.off();
 						if (type === 'udp') {
 							server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
-								_event.off();
 								if (err) {
 									return console.error(err);
 								}
