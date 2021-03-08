@@ -101,7 +101,7 @@ event.on('query', function(type, msg, rinfo) {
 		delete cache[query.name][query.type];
 	}
 
-	if (cache[query.name] && cache[query.name][query.type]) {
+	if (cache[query.name] && cache[query.name][query.type] && cache[query.name][query.type].data) {
 		var answerData = {
 			type: 'response',
 			id: packet.id,
