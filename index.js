@@ -96,6 +96,11 @@ event.on('query', function(type, msg, rinfo) {
 
 	//console.log(query.type);
 
+	if (cache[query.name] && cache[query.name][query.type] && cache[query.name][query.type].expiresAt < Date.now()) {
+		console.log(`Removing ${query.type} ${query.name} from cache due to expiry`);
+		delete cache[query.name][query.type];
+	}
+
 	if (cache[query.name] && cache[query.name][query.type]) {
 		var answerData = {
 			type: 'response',
@@ -105,23 +110,23 @@ event.on('query', function(type, msg, rinfo) {
 			answers: []
 		};
 
-		for (var i = 0; i < cache[query.name][query.type].length; i++) {
-			if (typeof cache[query.name][query.type][i] === 'string' && cache[query.name][query.type][i].includes('CNAME:')) {
+		for (var i = 0; i < cache[query.name][query.type].data.length; i++) {
+			if (typeof cache[query.name][query.type].data[i] === 'string' && cache[query.name][query.type].data[i].includes('CNAME:')) {
 				answerData.answers.push({
 					type: 'CNAME',
 					class: query.class,
 					name: query.name,
 					ttl: 60,
-					data: cache[query.name][query.type][i].split('CNAME:')[1]
+					data: cache[query.name][query.type].data[i].split('CNAME:')[1]
 				});
 			} else {
-				//console.log(cache[query.name][query.type][i]);
+				//console.log(cache[query.name][query.type].data[i]);
 				answerData.answers.push({
 					type: query.type,
 					class: query.class,
 					name: query.name,
 					ttl: 60,
-					data: cache[query.name][query.type][i]
+					data: cache[query.name][query.type].data[i]
 				});
 			}
 		}
@@ -140,9 +145,9 @@ event.on('query', function(type, msg, rinfo) {
 				console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
 			});
 		}
-		//console.log(answerData);
+		//console.log(cache[query.name][query.type]);
 	} else if (!['A', 'AAAA'].includes(query.type)) {
-		//dns.setServers(['8.8.8.8']);
+		dns.setServers(['8.8.8.8']);
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
 			if (err) {
@@ -167,13 +172,18 @@ event.on('query', function(type, msg, rinfo) {
 			} else if (data) {
 				if (!cache[query.name]) {
 					cache[query.name] = {};
+					cache[query.name][query.type] = {};
+				}
+				if (cache[query.name] && !cache[query.name][query.type]) {
+					cache[query.name][query.type] = {};
 				}
 				for (var i = 0; i < data.length; i++) {
 					if (query.type === 'SRV') {
 						var _thisData = Object.assign({}, data[i]);
 						_thisData.target = _thisData.name;
 						delete _thisData.name;
-						cache[query.name][query.type] = [_thisData];
+						cache[query.name][query.type].data = [_thisData];
+						cache[query.name][query.type].expiresAt = Date.now() + (60 * 10 * 1000);
 						answerData.answers.push({
 							type: query.type,
 							class: query.class,
@@ -182,7 +192,8 @@ event.on('query', function(type, msg, rinfo) {
 							data: _thisData
 						});
 					} else {
-						cache[query.name][query.type] = data;
+						cache[query.name][query.type].data = data;
+						cache[query.name][query.type].expiresAt = Date.now() + (60 * 10 * 1000);
 						answerData.answers.push({
 							type: query.type,
 							class: query.class,
@@ -321,8 +332,13 @@ event.on('query', function(type, msg, rinfo) {
 						if (data[0] && data[0].type === 5) { // CNAME
 							if (!cache[query.name]) {
 								cache[query.name] = {};
+								cache[query.name][query.type] = {};
 							}
-							cache[query.name][query.type] = [`CNAME:${data[0].data}`];
+							if (cache[query.name] && !cache[query.name][query.type]) {
+								cache[query.name][query.type] = {};
+							}
+							cache[query.name][query.type].data = [`CNAME:${data[0].data}`];
+							cache[query.name][query.type].expiresAt = Date.now() + (60 * 10 * 1000);
 							answerData.answers.push({
 								type: 'CNAME',
 								class: query.class,
@@ -333,8 +349,12 @@ event.on('query', function(type, msg, rinfo) {
 						} else {
 							if (!cache[query.name]) {
 								cache[query.name] = {};
+								cache[query.name][query.type] = {};
 							}
-							cache[query.name][query.type] = [];
+							if (cache[query.name] && !cache[query.name][query.type]) {
+								cache[query.name][query.type] = {};
+							}
+							cache[query.name][query.type].data = [];
 						}
 
 						event.emit('dnsHComplete');
@@ -364,8 +384,13 @@ event.on('query', function(type, msg, rinfo) {
 				} else {
 					if (!cache[query.name]) {
 						cache[query.name] = {};
+						cache[query.name][query.type] = {};
 					}
-					cache[query.name][query.type] = answerVersionData;
+					if (cache[query.name] && !cache[query.name][query.type]) {
+						cache[query.name][query.type] = {};
+					}
+					cache[query.name][query.type].data = answerVersionData;
+					cache[query.name][query.type].expiresAt = Date.now() + (60 * 10 * 1000);
 					for (var i = 0; i < answerVersionData.length; i++) {
 						answerData.answers.push({
 							type: answerType,
