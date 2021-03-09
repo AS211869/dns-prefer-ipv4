@@ -7,6 +7,8 @@ const DoH = require('doh-js-client').DoH;
 const { EventEmitter } = require('events');
 var dnsH = new DoH('google');
 
+dns.setServers(['8.8.8.8']);
+
 // https://support.umbrella.com/hc/en-us/articles/232254248-Common-DNS-return-codes-for-any-DNS-service-and-Umbrella-
 let NOERROR_RCODE = 0x00;
 let SERVFAIL_RCODE = 0x02;
@@ -145,9 +147,14 @@ event.on('query', function(type, msg, rinfo) {
 				console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
 			});
 		}
+
+		if (cache[query.name] && cache[query.name][query.type] && cache[query.name][query.type].expiresAt > Date.now()) {
+			console.log(`Removing ${query.type} ${query.name} from cache due to expiry`);
+			delete cache[query.name][query.type];
+		}
+
 		//console.log(cache[query.name][query.type]);
 	} else if (!['A', 'AAAA'].includes(query.type)) {
-		dns.setServers(['8.8.8.8']);
 		var error = false;
 		dns.resolve(query.name, query.type, function(err, data) {
 			if (err) {
