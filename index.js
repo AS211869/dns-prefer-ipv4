@@ -15,7 +15,7 @@ let SERVFAIL_RCODE = 0x02;
 let NXDOMAIN_RCODE = 0x03;
 let NOTIMP_RCODE = 0x04;
 
-let CACHE_MINUTES = 0.5;
+let CACHE_MINUTES = 10;
 
 var cache = {};
 
