@@ -464,7 +464,7 @@ event.on('query', function(type, msg, rinfo) {
 		}
 
 		if (cache[query.name] && cache[query.name][query.type] && cache[query.name][query.type].expiresAt < Date.now()) {
-			console.log(`Removing ${query.type} ${query.name} from cache due to expiry and requesting new data to cache`);
+			console.log(`Cache for ${query.type} ${query.name} expired. Requesting new data to cache`);
 			//delete cache[query.name][query.type];
 
 			if (!['A', 'AAAA'].includes(query.type)) {
