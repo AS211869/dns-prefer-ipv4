@@ -411,7 +411,7 @@ event.on('query', function(type, msg, rinfo) {
 				if (waitForDNSH) {
 					// eslint-disable-next-line no-inner-declarations
 					function doDoHEvent() {
-						event.removeListener('dnsDoHComplete', doDoHEvent);
+						event.removeListener('dnsHComplete', doDoHEvent);
 						if (type === 'udp') {
 							server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
 								if (err) {
