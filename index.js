@@ -5,7 +5,10 @@ const dnsPacket = require('dns-packet');
 const dns = require('dns');
 const DoH = require('doh-js-client').DoH;
 const { EventEmitter } = require('events');
-var dnsH = new DoH('google');
+const dnsH = new DoH('google');
+const fs = require('fs');
+const path = require('path');
+const onChange = require('on-change');
 
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
@@ -15,9 +18,19 @@ let SERVFAIL_RCODE = 0x02;
 let NXDOMAIN_RCODE = 0x03;
 let NOTIMP_RCODE = 0x04;
 
-let CACHE_MINUTES = 10;
+let CACHE_MINUTES = 1;
 
-var cache = {};
+var _cache = {};
+
+if (fs.existsSync(path.join(__dirname, 'cache.json'))) {
+	console.log('Cache file exists, loading data from cache file');
+	_cache = JSON.parse(fs.readFileSync(path.join(__dirname, 'cache.json')));
+}
+
+var cache = onChange(_cache, function() {
+	console.log('Cache data changed, saving to cache file');
+	fs.writeFileSync(path.join(__dirname, 'cache.json'), JSON.stringify(cache));
+});
 
 var event = new EventEmitter();
 
@@ -49,6 +62,9 @@ server.on('message', (msg, rinfo) => {
 });
 
 function queryNotA(query, packet, type, sender) {
+	var thisCache = {};
+	thisCache[query.type] = {};
+
 	var error = false;
 	dns.resolve(query.name, query.type, function(err, data) {
 		if (err) {
@@ -71,20 +87,21 @@ function queryNotA(query, packet, type, sender) {
 		if (error) {
 			answerData.flags = SERVFAIL_RCODE;
 		} else if (data) {
-			if (!cache[query.name]) {
+			/*if (!cache[query.name]) {
 				cache[query.name] = {};
 				cache[query.name][query.type] = {};
 			}
 			if (cache[query.name] && !cache[query.name][query.type]) {
 				cache[query.name][query.type] = {};
-			}
+			}*/
 			for (var i = 0; i < data.length; i++) {
 				if (query.type === 'SRV') {
 					var _thisData = Object.assign({}, data[i]);
 					_thisData.target = _thisData.name;
 					delete _thisData.name;
-					cache[query.name][query.type].data = [_thisData];
-					cache[query.name][query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
+					thisCache[query.type].data = [_thisData];
+					thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
+					cache[query.name] = thisCache;
 					answerData.answers.push({
 						type: query.type,
 						class: query.class,
@@ -93,8 +110,9 @@ function queryNotA(query, packet, type, sender) {
 						data: _thisData
 					});
 				} else {
-					cache[query.name][query.type].data = data;
-					cache[query.name][query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
+					thisCache[query.type].data = data;
+					thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
+					cache[query.name] = thisCache;
 					answerData.answers.push({
 						type: query.type,
 						class: query.class,
@@ -168,6 +186,9 @@ function queryAorAAAA(query, packet, type, sender) {
 		//console.log(data4);
 
 		dns.resolve6(query.name, 'AAAA', function(err6, data6) {
+			var thisCache = {};
+			thisCache[query.type] = {};
+
 			var v6Answer = false;
 			var v6Error = false;
 			var v6FailError = false;
@@ -239,15 +260,16 @@ function queryAorAAAA(query, packet, type, sender) {
 				waitForDNSH = true;
 				dnsH.resolve(query.name, query.type).then(function(data) {
 					if (data[0] && data[0].type === 5) { // CNAME
-						if (!cache[query.name]) {
-							cache[query.name] = {};
-							cache[query.name][query.type] = {};
+						/*if (!thisCache[query.name]) {
+							thisCache[query.name] = {};
+							thisCache[query.name][query.type] = {};
 						}
-						if (cache[query.name] && !cache[query.name][query.type]) {
-							cache[query.name][query.type] = {};
-						}
-						cache[query.name][query.type].data = [`CNAME:${data[0].data}`];
-						cache[query.name][query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
+						if (thisCache[query.name] && !thisCache[query.name][query.type]) {
+							thisCache[query.name][query.type] = {};
+						}*/
+						thisCache[query.type].data = [`CNAME:${data[0].data}`];
+						thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
+						cache[query.name] = thisCache;
 						answerData.answers.push({
 							type: 'CNAME',
 							class: query.class,
@@ -256,14 +278,15 @@ function queryAorAAAA(query, packet, type, sender) {
 							data: data[0].data
 						});
 					} else {
-						if (!cache[query.name]) {
-							cache[query.name] = {};
-							cache[query.name][query.type] = {};
+						/*if (!thisCache[query.name]) {
+							thisCache[query.name] = {};
+							thisCache[query.name][query.type] = {};
 						}
-						if (cache[query.name] && !cache[query.name][query.type]) {
-							cache[query.name][query.type] = {};
-						}
-						cache[query.name][query.type].data = [];
+						if (thisCache[query.name] && !thisCache[query.name][query.type]) {
+							thisCache[query.name][query.type] = {};
+						}*/
+						thisCache[query.type].data = [];
+						cache[query.name] = thisCache;
 					}
 
 					event.emit('dnsHComplete');
@@ -293,15 +316,15 @@ function queryAorAAAA(query, packet, type, sender) {
 					}
 				});
 			} else {
-				if (!cache[query.name]) {
-					cache[query.name] = {};
-					cache[query.name][query.type] = {};
+				/*if (!thisCache[query.name]) {
+					thisCache[query.name] = {};
+					thisCache[query.name][query.type] = {};
 				}
-				if (cache[query.name] && !cache[query.name][query.type]) {
-					cache[query.name][query.type] = {};
-				}
-				cache[query.name][query.type].data = answerVersionData;
-				cache[query.name][query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
+				if (thisCache[query.name] && !thisCache[query.name][query.type]) {
+					thisCache[query.name][query.type] = {};
+				}*/
+				thisCache[query.type].data = answerVersionData;
+				thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
 				for (var i = 0; i < answerVersionData.length; i++) {
 					answerData.answers.push({
 						type: answerType,
@@ -312,7 +335,8 @@ function queryAorAAAA(query, packet, type, sender) {
 					});
 				}
 
-				cache[query.name][query.type === 'A' ? 'AAAA' : 'A'] = [];
+				thisCache[query.type === 'A' ? 'AAAA' : 'A'] = [];
+				cache[query.name] = thisCache;
 
 				//console.log(answerData);
 			}
