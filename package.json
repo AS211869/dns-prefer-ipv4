@@ -1,6 +1,6 @@
 {
   "name": "dns-prefer-ipv4",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A DNS server that prefers IPv4 responses over IPv6 ones",
   "main": "index.js",
   "scripts": {

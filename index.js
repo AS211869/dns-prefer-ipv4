@@ -30,6 +30,8 @@ if (fs.existsSync(path.join(__dirname, 'cache.json'))) {
 var cache = onChange(_cache, function() {
 	console.log('Cache data changed, saving to cache file');
 	fs.writeFileSync(path.join(__dirname, 'cache.json'), JSON.stringify(cache));
+}, {
+	ignoreDetached: true
 });
 
 var event = new EventEmitter();
@@ -61,12 +63,37 @@ server.on('message', (msg, rinfo) => {
 	event.emit('query', 'udp', msg, rinfo);
 });
 
+function dnsQuery(name, type, packet, cb) {
+	const socket = dgram.createSocket('udp4');
+
+	const buf = dnsPacket.encode({
+		type: 'query',
+		id: packet ? packet.id : null,
+		flags: dnsPacket.RECURSION_DESIRED,
+		questions: [{
+			type,
+			name
+		}]
+	});
+
+	socket.on('message', message => {
+		//console.log(dnsPacket.decode(message));
+		cb(null, dnsPacket.decode(message));
+	});
+
+	socket.on('error', error => {
+		cb(error, null);
+	});
+
+	socket.send(buf, 0, buf.length, 53, '8.8.8.8');
+}
+
 function queryNotA(query, packet, type, sender) {
 	var thisCache = {};
 	thisCache[query.type] = {};
 
 	var error = false;
-	dns.resolve(query.name, query.type, function(err, data) {
+	dnsQuery(query.name, query.type, packet, function(err, data) {
 		if (err) {
 			if (err.code !== 'ENODATA' && err.code !== 'ENOTFOUND') {
 				error = true;
@@ -87,44 +114,12 @@ function queryNotA(query, packet, type, sender) {
 		if (error) {
 			answerData.flags = SERVFAIL_RCODE;
 		} else if (data) {
-			/*if (!cache[query.name]) {
-				cache[query.name] = {};
-				cache[query.name][query.type] = {};
-			}
-			if (cache[query.name] && !cache[query.name][query.type]) {
-				cache[query.name][query.type] = {};
-			}*/
-			for (var i = 0; i < data.length; i++) {
-				if (query.type === 'SRV') {
-					var _thisData = Object.assign({}, data[i]);
-					_thisData.target = _thisData.name;
-					delete _thisData.name;
-					thisCache[query.type].data = [_thisData];
-					thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
-					cache[query.name] = thisCache;
-					answerData.answers.push({
-						type: query.type,
-						class: query.class,
-						name: query.name,
-						ttl: 60,
-						data: _thisData
-					});
-				} else {
-					thisCache[query.type].data = data;
-					thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
-					cache[query.name] = thisCache;
-					answerData.answers.push({
-						type: query.type,
-						class: query.class,
-						name: query.name,
-						ttl: 60,
-						data: data[i]
-					});
-				}
-			}
+			answerData = data;
+			answerData.id = packet ? packet.id : null;
 
-			//console.log(answerData.answers[0].data);
-			//console.log(cache[query.name][query.type]);
+			thisCache[query.type].data = answerData;
+			thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+			cache[query.name] = thisCache;
 		}
 
 		if (sender) {
@@ -148,7 +143,7 @@ function queryNotA(query, packet, type, sender) {
 }
 
 function queryAorAAAA(query, packet, type, sender) {
-	dns.resolve4(query.name, 'A', function(err4, data4) {
+	dnsQuery(query.name, 'A', packet, function(err4, data4) {
 		var v4Answer = false;
 		var v4Error = false;
 		var v4FailError = false;
@@ -161,6 +156,7 @@ function queryAorAAAA(query, packet, type, sender) {
 					type: 'response',
 					id: packet ? packet.id : null,
 					flags: SERVFAIL_RCODE,
+					questions: [query],
 					answers: []
 				};
 
@@ -185,7 +181,7 @@ function queryAorAAAA(query, packet, type, sender) {
 
 		//console.log(data4);
 
-		dns.resolve6(query.name, 'AAAA', function(err6, data6) {
+		dnsQuery(query.name, 'AAAA', packet, function(err6, data6) {
 			var thisCache = {};
 			thisCache[query.type] = {};
 
@@ -201,6 +197,7 @@ function queryAorAAAA(query, packet, type, sender) {
 						type: 'response',
 						id: packet ? packet.id : null,
 						flags: SERVFAIL_RCODE,
+						questions: [query],
 						answers: []
 					};
 
@@ -225,149 +222,103 @@ function queryAorAAAA(query, packet, type, sender) {
 
 			//console.log(data6);
 
-			if (!v4Error && data4.length !== 0) {
-				v4Answer = true;
+			if (!v4Error && data4.answers.length !== 0) {
+				if (data4.answers.length === 1 && data4.answers[0].type === 'CNAME') {
+					v4Answer = false;
+				} else {
+					v4Answer = true;
+				}
 			}
 
-			if (!v6Error && data6.length !== 0) {
-				v6Answer = true;
+			if (!v6Error && data6.answers.length !== 0) {
+				if (data6.answers.length === 1 && data6.answers[0].type === 'CNAME') {
+					v6Answer = false;
+				} else {
+					v6Answer = true;
+				}
 			}
 
 			//console.log(`4: ${v4Answer}`);
 			//console.log(`6: ${v6Answer}`);
 			//console.log(`b: ${v4Answer && v6Answer}`);
 
-			var answerData = {
-				type: 'response',
-				id: packet ? packet.id : null,
-				questions: [query],
-				flags: dnsPacket.RECURSION_DESIRED | dnsPacket.RECURSION_AVAILABLE,
-				answers: []
-			};
+			var data4Data = data4;
+			data4Data.id = packet ? packet.id : null;
+			var data6Data = data6;
+			data6Data.id = packet ? packet.id : null;
 
-			//console.log(`qid: ${packet.id}`);
-
-			var answerVersionData = v4Answer ? data4 : data6;
+			var answerVersionData = v4Answer ? data4.answer : data6.answer;
 			var answerType = v4Answer ? 'A' : 'AAAA';
 
-			var waitForDNSH = false;
+			if (!v4Answer && !v6Answer) {
+				var answerData = query.type === 'A' ? data4Data : data6Data;
+				if (answerData.authorities.length > 0) {
+					thisCache[query.type].data = answerData;
+					thisCache[query.type].expiresAt = Date.now() + (answerData.authorities[0].data.minimum * 1000);
+					cache[query.name] = thisCache;
+				}
+				if (sender) {
+					if (type === 'udp') {
+						server.send(dnsPacket.encode(answerData), sender.port, sender.address, function(err, bytes) {
+							if (err) {
+								return console.error(err);
+							}
 
-			if ((answerType === 'A' && v4Error) || (answerType === 'AAAA' && v6Error)) {
-				var _error = err4 || err6;
-				//console.log(_error.code);
-				answerData.flags = _error.code === 'ENOTFOUND' ? NXDOMAIN_RCODE : NOERROR_RCODE;
-			} else if ((answerType === 'AAAA' && query.type === 'A') || (answerType === 'A' && query.type === 'AAAA')) {
-				waitForDNSH = true;
-				dnsH.resolve(query.name, query.type).then(function(data) {
-					if (data[0] && data[0].type === 5) { // CNAME
-						/*if (!thisCache[query.name]) {
-							thisCache[query.name] = {};
-							thisCache[query.name][query.type] = {};
-						}
-						if (thisCache[query.name] && !thisCache[query.name][query.type]) {
-							thisCache[query.name][query.type] = {};
-						}*/
-						thisCache[query.type].data = [`CNAME:${data[0].data}`];
-						thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
-						cache[query.name] = thisCache;
-						answerData.answers.push({
-							type: 'CNAME',
-							class: query.class,
-							name: query.name,
-							ttl: 60,
-							data: data[0].data
+							//console.log(bytes);
 						});
 					} else {
-						/*if (!thisCache[query.name]) {
-							thisCache[query.name] = {};
-							thisCache[query.name][query.type] = {};
-						}
-						if (thisCache[query.name] && !thisCache[query.name][query.type]) {
-							thisCache[query.name][query.type] = {};
-						}*/
-						thisCache[query.type].data = [];
-						cache[query.name] = thisCache;
+						sender.socket.write(dnsPacket.streamEncode(answerData), function() {
+							sender.socket.end();
+						});
 					}
-
-					event.emit('dnsHComplete');
-				}).catch(function(err) {
-					console.log(`Error doing DNS lookup: ${err}`);
-					var answerDataError = {
-						type: 'response',
-						id: packet ? packet.id : null,
-						flags: SERVFAIL_RCODE,
-						answers: []
-					};
-
-					if (sender) {
-						if (type === 'udp') {
-							server.send(dnsPacket.encode(answerDataError), sender.port, sender.address, function(err, bytes) {
-								if (err) {
-									return console.error(err);
-								}
-
-								//console.log(bytes);
-							});
-						} else {
-							sender.socket.write(dnsPacket.streamEncode(answerDataError), function() {
-								sender.socket.end();
-							});
-						}
-					}
-				});
-			} else {
-				/*if (!thisCache[query.name]) {
-					thisCache[query.name] = {};
-					thisCache[query.name][query.type] = {};
 				}
-				if (thisCache[query.name] && !thisCache[query.name][query.type]) {
-					thisCache[query.name][query.type] = {};
-				}*/
-				thisCache[query.type].data = answerVersionData;
-				thisCache[query.type].expiresAt = Date.now() + (60 * CACHE_MINUTES * 1000);
-				for (var i = 0; i < answerVersionData.length; i++) {
-					answerData.answers.push({
-						type: answerType,
-						class: query.class,
-						name: query.name,
-						ttl: 60,
-						data: answerVersionData[i]
-					});
-				}
+			} else if ((answerType === 'AAAA' && query.type === 'A') || (answerType === 'A' && query.type === 'AAAA')) {
+				// eslint-disable-next-line no-redeclare
+				var answerData = answerType === 'A' ? data4Data : data6Data;
+				answerData.questions[0].type = query.type;
 
-				thisCache[query.type === 'A' ? 'AAAA' : 'A'] = [];
-				cache[query.name] = thisCache;
+				if (answerData.answers[0].type !== 'CNAME') {
+					answerData.answers = [];
+				} else {
+					answerData.answers = answerData.answers.slice(0, 1);
+				}
 
 				//console.log(answerData);
-			}
 
-			//console.log(answerData);
+				thisCache[query.type].data = answerData;
+				thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				cache[query.name] = thisCache;
 
-			if (waitForDNSH) {
-				// eslint-disable-next-line no-inner-declarations
-				function doDoHEvent() {
-					event.removeListener('dnsHComplete', doDoHEvent);
-					if (sender) {
-						if (type === 'udp') {
-							server.send(dnsPacket.encode(answerData), sender.port, sender.address, function(err, bytes) {
-								if (err) {
-									return console.error(err);
-								}
+				if (sender) {
+					if (type === 'udp') {
+						server.send(dnsPacket.encode(answerData), sender.port, sender.address, function(err, bytes) {
+							if (err) {
+								return console.error(err);
+							}
 
-								//console.log(bytes);
-								console.log(`Answered UDP request: ${query.type} ${query.name} for ${sender.address}`);
-							});
-						} else {
-							sender.socket.write(dnsPacket.streamEncode(answerData), function() {
-								console.log(`Answered TCP request: ${query.type} ${query.name} for ${sender.address}`);
-								sender.socket.end();
-							});
-						}
+							//console.log(bytes);
+						});
+					} else {
+						sender.socket.write(dnsPacket.streamEncode(answerData), function() {
+							sender.socket.end();
+						});
 					}
 				}
-				event.addListener('dnsHComplete', doDoHEvent);
 			} else {
-				// eslint-disable-next-line no-lonely-if
+				// eslint-disable-next-line no-redeclare
+				var answerData = query.type === 'A' ? data4Data : data6Data;
+				thisCache[query.type].data = answerData;
+				thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				var cachedOtherRecord = query.type === 'A' ? data6Data : data4Data;
+				if (answerData.answers[0].type !== 'CNAME') {
+					cachedOtherRecord.answers = [];
+				} else {
+					cachedOtherRecord.answers = answerData.answers.slice(0, 1);
+				}
+				thisCache[query.type === 'A' ? 'AAAA' : 'A'] = {};
+				thisCache[query.type === 'A' ? 'AAAA' : 'A'].data = cachedOtherRecord;
+				thisCache[query.type === 'A' ? 'AAAA' : 'A'].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				cache[query.name] = thisCache;
 				if (sender) {
 					if (type === 'udp') {
 						server.send(dnsPacket.encode(answerData), sender.port, sender.address, function(err, bytes) {
@@ -407,7 +358,8 @@ event.on('query', function(type, msg, rinfo) {
 	try {
 		query = packet.questions[0];
 
-		var supportedTypes = ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SRV', 'TXT'];
+		//var supportedTypes = ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'SRV', 'TXT'];
+		var supportedTypes = ['A', 'AAAA', 'CAA', 'CNAME', 'DNAME', 'DNSKEY', 'DS', 'HINFO', 'MX', 'NS', 'NSEC', 'NSEC3', 'NULL', 'PTR', 'SOA', 'SRV', 'TXT'];
 
 		if (!supportedTypes.includes(query.type)) {
 			_throwError = NOTIMP_RCODE;
@@ -418,6 +370,7 @@ event.on('query', function(type, msg, rinfo) {
 			type: 'response',
 			id: packet ? packet.id : null,
 			flags: _throwError,
+			questions: [query],
 			answers: []
 		};
 
@@ -443,37 +396,22 @@ event.on('query', function(type, msg, rinfo) {
 	//console.log(query.type);
 
 	if (cache[query.name] && cache[query.name][query.type] && cache[query.name][query.type].data) {
-		var answerData = {
-			type: 'response',
-			id: packet ? packet.id : null,
-			flags: dnsPacket.RECURSION_DESIRED | dnsPacket.RECURSION_AVAILABLE,
-			questions: [query],
-			answers: []
-		};
+		var _answerData = Object.assign({}, cache[query.name][query.type].data);
+		_answerData.id = packet ? packet.id : null;
 
-		for (var i = 0; i < cache[query.name][query.type].data.length; i++) {
-			if (typeof cache[query.name][query.type].data[i] === 'string' && cache[query.name][query.type].data[i].includes('CNAME:')) {
-				answerData.answers.push({
-					type: 'CNAME',
-					class: query.class,
-					name: query.name,
-					ttl: 60,
-					data: cache[query.name][query.type].data[i].split('CNAME:')[1]
-				});
-			} else {
-				//console.log(cache[query.name][query.type].data[i]);
-				answerData.answers.push({
-					type: query.type,
-					class: query.class,
-					name: query.name,
-					ttl: 60,
-					data: cache[query.name][query.type].data[i]
-				});
+		var dataAnswers = _answerData.answers;
+		var expiresAt = cache[query.name][query.type].expiresAt;
+
+		for (var i = 0; i < dataAnswers.length; i++) {
+			var ttlLeft = Math.floor((expiresAt - Date.now()) / 1000);
+			if (ttlLeft < 0) {
+				ttlLeft = 0;
 			}
+			dataAnswers[i].ttl = ttlLeft;
 		}
 
 		if (type === 'udp') {
-			server.send(dnsPacket.encode(answerData), rinfo.port, rinfo.address, function(err, bytes) {
+			server.send(dnsPacket.encode(_answerData), rinfo.port, rinfo.address, function(err, bytes) {
 				if (err) {
 					return console.error(err);
 				}
@@ -482,7 +420,7 @@ event.on('query', function(type, msg, rinfo) {
 				console.log(`Answered UDP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
 			});
 		} else {
-			rinfo.socket.end(dnsPacket.streamEncode(answerData), function() {
+			rinfo.socket.end(dnsPacket.streamEncode(_answerData), function() {
 				console.log(`Answered TCP request: ${query.type} ${query.name} for ${rinfo.address} from cache`);
 			});
 		}
