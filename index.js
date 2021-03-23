@@ -277,6 +277,8 @@ function queryAorAAAA(query, packet, type, sender) {
 				var answerData = answerType === 'A' ? data4Data : data6Data;
 				answerData.questions[0].type = query.type;
 
+				var _ttl = answerData.answers[0].ttl || 0;
+
 				if (answerData.answers[0].type !== 'CNAME') {
 					answerData.answers = [];
 				} else {
@@ -286,7 +288,7 @@ function queryAorAAAA(query, packet, type, sender) {
 				//console.log(answerData);
 
 				thisCache[query.type].data = answerData;
-				thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				thisCache[query.type].expiresAt = Date.now() + (_ttl * 1000);
 				cache[query.name] = thisCache;
 
 				if (sender) {
