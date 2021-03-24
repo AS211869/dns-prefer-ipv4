@@ -18,7 +18,7 @@ let SERVFAIL_RCODE = 0x02;
 let NXDOMAIN_RCODE = 0x03;
 let NOTIMP_RCODE = 0x04;
 
-let CACHE_MINUTES = 1;
+let CACHE_MINUTES = 5;
 
 var _cache = {};
 
@@ -118,7 +118,11 @@ function queryNotA(query, packet, type, sender) {
 			answerData.id = packet ? packet.id : null;
 
 			thisCache[query.type].data = answerData;
-			thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+			if (answerData.answers[0]) {
+				thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+			} else {
+				thisCache[query.type].expiresAt = Date.now() + (CACHE_MINUTES * 60 * 1000);
+			}
 			cache[query.name] = thisCache;
 		}
 
@@ -277,7 +281,7 @@ function queryAorAAAA(query, packet, type, sender) {
 				var answerData = answerType === 'A' ? data4Data : data6Data;
 				answerData.questions[0].type = query.type;
 
-				var _ttl = answerData.answers[0].ttl || 0;
+				var _ttl = answerData.answers[0] ? answerData.answers[0].ttl : 0;
 
 				if (answerData.answers[0].type !== 'CNAME') {
 					answerData.answers = [];
@@ -310,7 +314,11 @@ function queryAorAAAA(query, packet, type, sender) {
 				// eslint-disable-next-line no-redeclare
 				var answerData = query.type === 'A' ? data4Data : data6Data;
 				thisCache[query.type].data = answerData;
-				thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				if (answerData.answers[0]) {
+					thisCache[query.type].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				} else {
+					thisCache[query.type].expiresAt = Date.now() + (CACHE_MINUTES * 60 * 1000);
+				}
 				var cachedOtherRecord = query.type === 'A' ? data6Data : data4Data;
 				if (answerData.answers[0].type !== 'CNAME') {
 					cachedOtherRecord.answers = [];
@@ -319,7 +327,11 @@ function queryAorAAAA(query, packet, type, sender) {
 				}
 				thisCache[query.type === 'A' ? 'AAAA' : 'A'] = {};
 				thisCache[query.type === 'A' ? 'AAAA' : 'A'].data = cachedOtherRecord;
-				thisCache[query.type === 'A' ? 'AAAA' : 'A'].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				if (answerData.answers[0]) {
+					thisCache[query.type === 'A' ? 'AAAA' : 'A'].expiresAt = Date.now() + (answerData.answers[0].ttl * 1000);
+				} else {
+					thisCache[query.type === 'A' ? 'AAAA' : 'A'].expiresAt = Date.now() + (CACHE_MINUTES * 60 * 1000);
+				}
 				cache[query.name] = thisCache;
 				if (sender) {
 					if (type === 'udp') {
