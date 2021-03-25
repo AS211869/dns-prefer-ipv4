@@ -1,6 +1,6 @@
 {
   "name": "dns-prefer-ipv4",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A DNS server that prefers IPv4 responses over IPv6 ones",
   "main": "index.js",
   "scripts": {
@@ -9,8 +9,6 @@
   "author": "TrueWinter",
   "license": "MIT",
   "dependencies": {
-    "dns-packet": "^5.2.1",
-    "doh-js-client": "^0.2.0",
-    "on-change": "^2.2.3"
+    "dns-packet": "^5.2.1"
   }
 }

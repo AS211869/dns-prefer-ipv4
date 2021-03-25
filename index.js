@@ -2,15 +2,9 @@ const dgram = require('dgram');
 const server = dgram.createSocket('udp6');
 const serverTCP = require('net').createServer();
 const dnsPacket = require('dns-packet');
-const dns = require('dns');
-const DoH = require('doh-js-client').DoH;
 const { EventEmitter } = require('events');
-const dnsH = new DoH('google');
 const fs = require('fs');
 const path = require('path');
-const onChange = require('on-change');
-
-dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 // https://support.umbrella.com/hc/en-us/articles/232254248-Common-DNS-return-codes-for-any-DNS-service-and-Umbrella-
 let NOERROR_RCODE = 0x00;
@@ -20,19 +14,17 @@ let NOTIMP_RCODE = 0x04;
 
 let CACHE_MINUTES = 5;
 
-var _cache = {};
+var cache = {};
 
 if (fs.existsSync(path.join(__dirname, 'cache.json'))) {
 	console.log('Cache file exists, loading data from cache file');
-	_cache = JSON.parse(fs.readFileSync(path.join(__dirname, 'cache.json')));
+	cache = JSON.parse(fs.readFileSync(path.join(__dirname, 'cache.json')));
 }
 
-var cache = onChange(_cache, function() {
-	console.log('Cache data changed, saving to cache file');
+function saveCache() {
+	console.log('Saving to cache file');
 	fs.writeFileSync(path.join(__dirname, 'cache.json'), JSON.stringify(cache));
-}, {
-	ignoreDetached: true
-});
+}
 
 var event = new EventEmitter();
 
@@ -90,6 +82,9 @@ function dnsQuery(name, type, packet, cb) {
 
 function queryNotA(query, packet, type, sender) {
 	var thisCache = {};
+	if (cache[query.name]) {
+		thisCache = cache[query.name];
+	}
 	thisCache[query.type] = {};
 
 	var error = false;
@@ -124,6 +119,7 @@ function queryNotA(query, packet, type, sender) {
 				thisCache[query.type].expiresAt = Date.now() + (CACHE_MINUTES * 60 * 1000);
 			}
 			cache[query.name] = thisCache;
+			saveCache();
 		}
 
 		if (sender) {
@@ -187,6 +183,9 @@ function queryAorAAAA(query, packet, type, sender) {
 
 		dnsQuery(query.name, 'AAAA', packet, function(err6, data6) {
 			var thisCache = {};
+			if (cache[query.name]) {
+				thisCache = cache[query.name];
+			}
 			thisCache[query.type] = {};
 
 			var v6Answer = false;
@@ -260,6 +259,7 @@ function queryAorAAAA(query, packet, type, sender) {
 					thisCache[query.type].data = answerData;
 					thisCache[query.type].expiresAt = Date.now() + (answerData.authorities[0].data.minimum * 1000);
 					cache[query.name] = thisCache;
+					saveCache();
 				}
 				if (sender) {
 					if (type === 'udp') {
@@ -294,6 +294,7 @@ function queryAorAAAA(query, packet, type, sender) {
 				thisCache[query.type].data = answerData;
 				thisCache[query.type].expiresAt = Date.now() + (_ttl * 1000);
 				cache[query.name] = thisCache;
+				saveCache();
 
 				if (sender) {
 					if (type === 'udp') {
@@ -333,6 +334,7 @@ function queryAorAAAA(query, packet, type, sender) {
 					thisCache[query.type === 'A' ? 'AAAA' : 'A'].expiresAt = Date.now() + (CACHE_MINUTES * 60 * 1000);
 				}
 				cache[query.name] = thisCache;
+				saveCache();
 				if (sender) {
 					if (type === 'udp') {
 						server.send(dnsPacket.encode(answerData), sender.port, sender.address, function(err, bytes) {
