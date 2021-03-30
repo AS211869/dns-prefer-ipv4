@@ -70,10 +70,12 @@ function dnsQuery(name, type, packet, cb) {
 
 	socket.on('message', message => {
 		//console.log(dnsPacket.decode(message));
+		socket.close();
 		cb(null, dnsPacket.decode(message));
 	});
 
 	socket.on('error', error => {
+		socket.close();
 		cb(error, null);
 	});
 
