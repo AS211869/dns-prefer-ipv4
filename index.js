@@ -35,7 +35,7 @@ server.on('error', (err) => {
 
 serverTCP.on('error', (err) => {
 	console.log(`server error:\n${err.stack}`);
-	server.close();
+	serverTCP.close();
 });
 
 serverTCP.on('connection', (socket) => {
@@ -58,6 +58,9 @@ server.on('message', (msg, rinfo) => {
 function dnsQuery(name, type, packet, cb) {
 	const socket = dgram.createSocket('udp4');
 
+	let _timeout = 10000;
+	let _socketClosed = false;
+
 	const buf = dnsPacket.encode({
 		type: 'query',
 		id: packet ? packet.id : null,
@@ -69,17 +72,24 @@ function dnsQuery(name, type, packet, cb) {
 	});
 
 	socket.on('message', message => {
-		//console.log(dnsPacket.decode(message));
 		socket.close();
+		_socketClosed = true;
 		cb(null, dnsPacket.decode(message));
 	});
 
 	socket.on('error', error => {
 		socket.close();
+		_socketClosed = true;
 		cb(error, null);
 	});
 
 	socket.send(buf, 0, buf.length, 53, '8.8.8.8');
+
+	setTimeout(function() {
+		if (!_socketClosed) {
+			socket.close();
+		}
+	}, _timeout);
 }
 
 function queryNotA(query, packet, type, sender) {
