@@ -5,6 +5,7 @@ const dnsPacket = require('dns-packet');
 const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
+const cron = require('node-cron');
 
 // https://support.umbrella.com/hc/en-us/articles/232254248-Common-DNS-return-codes-for-any-DNS-service-and-Umbrella-
 let NOERROR_RCODE = 0x00;
@@ -15,15 +16,25 @@ let NOTIMP_RCODE = 0x04;
 let CACHE_MINUTES = 5;
 
 var cache = {};
+var beingCached = {};
+var toSaveCache = {};
 
 if (fs.existsSync(path.join(__dirname, 'cache.json'))) {
 	console.log('Cache file exists, loading data from cache file');
 	cache = JSON.parse(fs.readFileSync(path.join(__dirname, 'cache.json')));
 }
 
-function saveCache() {
+function saveCacheToFile() {
 	console.log('Saving to cache file');
 	fs.writeFileSync(path.join(__dirname, 'cache.json'), JSON.stringify(cache));
+}
+
+cron.schedule('*/5 * * * *', () => {
+	saveCacheToFile();
+});
+
+function saveCache() {
+	toSaveCache = Object.assign({}, cache);
 }
 
 var event = new EventEmitter();
@@ -132,6 +143,10 @@ function queryNotA(query, packet, type, sender) {
 			}
 			cache[query.name] = thisCache;
 			saveCache();
+
+			if (beingCached[query.name]) {
+				beingCached[query.name] = beingCached[query.name].filter(e => e !== query.type);
+			}
 		}
 
 		if (sender) {
@@ -268,10 +283,15 @@ function queryAorAAAA(query, packet, type, sender) {
 			if (!v4Answer && !v6Answer) {
 				var answerData = query.type === 'A' ? data4Data : data6Data;
 				if (answerData.authorities.length > 0) {
+
 					thisCache[query.type].data = answerData;
 					thisCache[query.type].expiresAt = Date.now() + (answerData.authorities[0].data.minimum * 1000);
 					cache[query.name] = thisCache;
 					saveCache();
+
+					if (beingCached[query.name]) {
+						beingCached[query.name] = beingCached[query.name].filter(e => e !== query.type);
+					}
 				}
 				if (sender) {
 					if (type === 'udp') {
@@ -307,6 +327,10 @@ function queryAorAAAA(query, packet, type, sender) {
 				thisCache[query.type].expiresAt = Date.now() + (_ttl * 1000);
 				cache[query.name] = thisCache;
 				saveCache();
+
+				if (beingCached[query.name]) {
+					beingCached[query.name] = beingCached[query.name].filter(e => e !== query.type);
+				}
 
 				if (sender) {
 					if (type === 'udp') {
@@ -347,6 +371,11 @@ function queryAorAAAA(query, packet, type, sender) {
 				}
 				cache[query.name] = thisCache;
 				saveCache();
+
+				if (beingCached[query.name]) {
+					beingCached[query.name] = beingCached[query.name].filter(e => e !== query.type);
+				}
+
 				if (sender) {
 					if (type === 'udp') {
 						server.send(dnsPacket.encode(answerData), sender.port, sender.address, function(err, bytes) {
@@ -454,13 +483,21 @@ event.on('query', function(type, msg, rinfo) {
 		}
 
 		if (cache[query.name] && cache[query.name][query.type] && cache[query.name][query.type].expiresAt < Date.now()) {
-			console.log(`Cache for ${query.type} ${query.name} expired. Requesting new data to cache`);
-			//delete cache[query.name][query.type];
+			if (!(beingCached[query.name] && beingCached[query.name].includes(query.type))) {
+				console.log(`Cache for ${query.type} ${query.name} expired. Requesting new data to cache`);
+				//delete cache[query.name][query.type];
 
-			if (!['A', 'AAAA'].includes(query.type)) {
-				queryNotA(query, null, null, null);
-			} else {
-				queryAorAAAA(query, null, null, null);
+				if (!beingCached[query.name]) {
+					beingCached[query.name] = [];
+				}
+
+				beingCached[query.name].push(query.type);
+
+				if (!['A', 'AAAA'].includes(query.type)) {
+					queryNotA(query, null, null, null);
+				} else {
+					queryAorAAAA(query, null, null, null);
+				}
 			}
 		}
 
