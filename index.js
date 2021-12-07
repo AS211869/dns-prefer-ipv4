@@ -42,11 +42,13 @@ var event = new EventEmitter();
 server.on('error', (err) => {
 	console.log(`server error:\n${err.stack}`);
 	server.close();
+	process.exit(1);
 });
 
 serverTCP.on('error', (err) => {
 	console.log(`server error:\n${err.stack}`);
 	serverTCP.close();
+	process.exit(1);
 });
 
 serverTCP.on('connection', (socket) => {
