@@ -71,7 +71,7 @@ server.on('message', (msg, rinfo) => {
 function dnsQuery(name, type, packet, cb) {
 	const socket = dgram.createSocket('udp4');
 
-	let _timeout = 10000;
+	let _timeout = 2000;
 	let _socketClosed = false;
 
 	const buf = dnsPacket.encode({
